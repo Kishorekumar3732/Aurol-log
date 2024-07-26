@@ -17,6 +17,15 @@
         android:layout_height="wrap_content"
         android:text="Heard" />
 
+    <Button
+        android:id="@+id/cannotHearButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Cannot Hear"
+        android:layout_below="@+id/heardButton"
+        android:layout_marginTop="16dp"
+        android:layout_centerHorizontal="true"/>
+
     <TextView
         android:id="@+id/resultTextView"
         android:layout_width="match_parent"

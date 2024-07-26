@@ -6,38 +6,42 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Bundle
 import android.os.Handler
-import android.os.Looper
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.components.XAxis
-import com.github.mikephil.charting.formatter.ValueFormatter
 import kotlin.math.PI
-import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.pow
 
 class PureToneTestActivity : AppCompatActivity() {
 
-    private var audioTrack: AudioTrack? = null
-    private val handler = Handler(Looper.getMainLooper())
-    private var isPlaying = false
+    private val frequencies = arrayOf(250, 500, 1000, 2000, 4000, 8000)
+    private val minDb = 0
+    private val maxDb = 120
+    private var currentFrequencyIndex = 0
+    private var currentDb = 50
+    private var heardDb: Int? = null
     private var isLeftEarTest = true
     private var isRightEarTest = false
-    private val frequencies = listOf(125, 250, 500, 1000, 2000, 4000, 8000)
-    private var currentFrequencyIndex = 0
-    private var currentDb = -10 // Start at -10 dB
-    private val maxDb = 120
+    private var isPlaying = false
+
+    private val leftEarResults = mutableMapOf<Int, Int>()
+    private val rightEarResults = mutableMapOf<Int, Int>()
+
     private lateinit var resultTextView: TextView
     private lateinit var chart: LineChart
     private lateinit var scrollView: ScrollView
-    private val leftEarResults = mutableMapOf<Int, Int>()
-    private val rightEarResults = mutableMapOf<Int, Int>()
+
+    private var audioTrack: AudioTrack? = null
+    private val handler = Handler()
     private var playToneRunnable: Runnable? = null
 
     @SuppressLint("SetTextI18n")
@@ -47,6 +51,7 @@ class PureToneTestActivity : AppCompatActivity() {
 
         val startTestButton: Button = findViewById(R.id.startTestButton)
         val heardButton: Button = findViewById(R.id.heardButton)
+        val cannotHearButton: Button = findViewById(R.id.cannotHearButton)
         resultTextView = findViewById(R.id.resultTextView)
         chart = findViewById(R.id.chart)
         scrollView = findViewById(R.id.scrollView)
@@ -57,7 +62,7 @@ class PureToneTestActivity : AppCompatActivity() {
             if (!isPlaying) {
                 isPlaying = true
                 currentFrequencyIndex = 0 // Reset frequency index
-                currentDb = -10 // Reset dB level
+                currentDb = 50 // Reset dB level
                 isLeftEarTest = true
                 isRightEarTest = false
                 leftEarResults.clear()
@@ -72,57 +77,94 @@ class PureToneTestActivity : AppCompatActivity() {
 
         heardButton.setOnClickListener {
             if (isPlaying) {
-                val frequency = frequencies[currentFrequencyIndex]
-                if (isLeftEarTest) {
-                    leftEarResults[frequency] = currentDb
-                    Log.d("MainActivity", "Left ear frequency $frequency, dB $currentDb")
-                } else if (isRightEarTest) {
-                    rightEarResults[frequency] = currentDb
-                    Log.d("MainActivity", "Right ear frequency $frequency, dB $currentDb")
-                }
-
-                // Stop the sound
-                stopTone()
-
-                // Move to the next frequency or ear test
-                if (currentFrequencyIndex < frequencies.size - 1) {
-                    currentFrequencyIndex++
-                    currentDb = -10 // Reset dB for the next frequency
-                } else {
-                    if (isRightEarTest) {
-                        // If completed both ears, show results
-                        resultTextView.append("Right ear test completed. Test completed.\n")
-                        printResults()
-                        plotResults()
-                        isPlaying = false
-                        return@setOnClickListener
-                    } else {
-                        // Print left ear results and move to next ear
-                        resultTextView.append("Left ear test completed. Starting right ear test...\n")
-                        printResults()
-                        isLeftEarTest = false
-                        isRightEarTest = true
-                        currentFrequencyIndex = 0
-                        currentDb = -10 // Reset dB for the next ear
-                    }
-                }
-
-                // Start testing the next frequency or ear
-                startEarTest()
+                handleHeardButton(true)
             }
         }
+
+        cannotHearButton.setOnClickListener {
+            if (isPlaying) {
+                handleHeardButton(false)
+            }
+        }
+    }
+
+    private fun handleHeardButton(heard: Boolean) {
+        val frequency = frequencies[currentFrequencyIndex]
+        if (heard) {
+            if (heardDb == null) {
+                heardDb = currentDb
+                currentDb -= 10 // Decrease dB level for finer tuning
+            } else {
+                val previousDb = heardDb!!
+                if (currentDb < previousDb) {
+                    // User can hear at lower dB, decrease further
+                    heardDb = currentDb
+                    currentDb -= 10
+                } else {
+                    // User can't hear at lower dB, increase slightly
+                    currentDb = (previousDb + currentDb) / 2
+                }
+            }
+        } else {
+            currentDb += 10 // Increase dB level since user cannot hear
+        }
+
+        if (currentDb < minDb) {
+            currentDb = minDb
+        }
+
+        if (heardDb != null && currentDb >= heardDb!!) {
+            // Finalize the result for this frequency
+            if (isLeftEarTest) {
+                leftEarResults[frequency] = heardDb!!
+                Log.d("PureToneTestActivity", "Left ear frequency $frequency, dB $heardDb")
+            } else if (isRightEarTest) {
+                rightEarResults[frequency] = heardDb!!
+                Log.d("PureToneTestActivity", "Right ear frequency $frequency, dB $heardDb")
+            }
+
+            heardDb = null
+            currentDb = 50 // Reset dB level for the next frequency
+            moveToNextFrequencyOrEar()
+        } else {
+            startEarTest()
+        }
+    }
+
+    private fun moveToNextFrequencyOrEar() {
+        if (currentFrequencyIndex < frequencies.size - 1) {
+            currentFrequencyIndex++
+        } else {
+            if (isRightEarTest) {
+                // If completed both ears, show results
+                resultTextView.append("Right ear test completed. Test completed.\n")
+                printResults()
+                plotResults()
+                isPlaying = false
+                return
+            } else {
+                // Print left ear results and move to next ear
+                resultTextView.append("Left ear test completed. Starting right ear test...\n")
+                printResults()
+                isLeftEarTest = false
+                isRightEarTest = true
+                currentFrequencyIndex = 0
+            }
+        }
+        startEarTest()
     }
 
     private fun startEarTest() {
         val frequency = frequencies[currentFrequencyIndex]
         playTone(frequency, isLeftEar = isLeftEarTest)
+        resultTextView.append("Testing frequency: $frequency Hz at $currentDb dB\n")
     }
 
     private fun playTone(frequency: Int, isLeftEar: Boolean) {
         stopTone()
 
         val sampleRate = 44100
-        val duration = 15 // seconds, change as needed
+        val duration = 2 // seconds, change as needed
         val numSamples = duration * sampleRate
         val sample = DoubleArray(numSamples)
         val generatedSnd = ByteArray(2 * numSamples)
@@ -131,11 +173,9 @@ class PureToneTestActivity : AppCompatActivity() {
             sample[i] = sin(2 * PI * i / (sampleRate / frequency))
         }
 
-        // Apply volume ramp
         var idx = 0
         for (i in sample.indices) {
-            val ramp = i.toFloat() / numSamples // Linear ramp from 0 to 1
-            val volume = ramp * 32767 * 10.0.pow(currentDb / 20.0)
+            val volume = 32767 * 10.0.pow(currentDb / 20.0)
             val valInt = (sample[i] * volume).toInt()
             val valShort = valInt.toShort()
             generatedSnd[idx++] = (valShort.toInt() and 0x00ff).toByte()
@@ -167,24 +207,8 @@ class PureToneTestActivity : AppCompatActivity() {
             val leftVolume = if (isLeftEar) 1.0f else 0.0f
             val rightVolume = if (isLeftEar) 0.0f else 1.0f
             audioTrack?.setStereoVolume(leftVolume, rightVolume)
-
-            // Increase volume gradually
-            playToneRunnable = object : Runnable {
-                override fun run() {
-                    if (currentDb < maxDb) {
-                        currentDb += 10 // Increase dB level
-                        val volume = 10.0.pow(currentDb / 20.0).toFloat()
-                        audioTrack?.setStereoVolume(
-                            if (isLeftEar) volume else 0.0f,
-                            if (isLeftEar) 0.0f else volume
-                        )
-                        handler.postDelayed(this, 1000) // Schedule next volume increase
-                    }
-                }
-            }
-            handler.post(playToneRunnable!!)
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error initializing AudioTrack", e)
+            Log.e("PureToneTestActivity", "Error initializing AudioTrack", e)
         }
     }
 
@@ -196,7 +220,7 @@ class PureToneTestActivity : AppCompatActivity() {
             audioTrack?.stop()
             audioTrack?.release()
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error stopping AudioTrack", e)
+            Log.e("PureToneTestActivity", "Error stopping AudioTrack", e)
         }
         audioTrack = null
     }
@@ -233,41 +257,30 @@ class PureToneTestActivity : AppCompatActivity() {
 
         // Create datasets for the chart
         val leftEarDataSet = LineDataSet(leftEarEntries, "Left Ear")
-        leftEarDataSet.color = resources.getColor(R.color.colorLeftEar, null)
-        leftEarDataSet.setCircleColor(resources.getColor(R.color.colorLeftEar, null))
-        leftEarDataSet.lineWidth = 2f
-        leftEarDataSet.circleRadius = 4f
-
         val rightEarDataSet = LineDataSet(rightEarEntries, "Right Ear")
-        rightEarDataSet.color = resources.getColor(R.color.colorRightEar, null)
-        rightEarDataSet.setCircleColor(resources.getColor(R.color.colorRightEar, null))
-        rightEarDataSet.lineWidth = 2f
-        rightEarDataSet.circleRadius = 4f
 
-        // Set data and refresh chart
-        val lineData = LineData(leftEarDataSet, rightEarDataSet)
-        chart.data = lineData
+        // Customize datasets appearance
+        leftEarDataSet.color = 0xff00ff00.toInt() // Green
+        rightEarDataSet.color = 0xffff0000.toInt() // Red
+
+        // Add datasets to chart data
+        val data = LineData(leftEarDataSet, rightEarDataSet)
+        chart.data = data
         chart.invalidate() // Refresh chart view
     }
 
     private fun printResults() {
-        resultTextView.append("\nFrequency\tLeft Ear\tRight Ear\n")
-        frequencies.forEach { frequency ->
-            val leftDb = leftEarResults[frequency] ?: "-"
-            val rightDb = rightEarResults[frequency] ?: "-"
-            resultTextView.append("$frequency Hz\t$leftDb dB\t$rightDb dB\n")
+        resultTextView.append(
+            if (isLeftEarTest) "Left ear results:\n" else "Right ear results:\n"
+        )
+        val results = if (isLeftEarTest) leftEarResults else rightEarResults
+        results.forEach { (frequency, db) ->
+            resultTextView.append("Frequency: $frequency Hz, dB: $db\n")
         }
-        scrollView.scrollTo(0, resultTextView.bottom)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopTone()
-    }
-
-    inner class FrequencyValueFormatter(private val frequencies: List<Int>) : ValueFormatter() {
-        override fun getFormattedValue(value: Float): String {
-            return frequencies.getOrNull(value.toInt())?.toString() ?: value.toString()
-        }
     }
 }
