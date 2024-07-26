@@ -9,5 +9,8 @@
     <string name="results">Results</string>
     <string name="test">Test</string>
     <string name="profile">Profile</string>
-
+    <string name="checking_environment_noise">Checking environment noise...</string>
+    <string name="environment_noise_level">Environment Noise Level: %1$d dB</string>
+    <string name="checking_headphones">Checking headphones...</string>
+    <string name="noise_check_failed">Noise level check failed</string>
 </resources>

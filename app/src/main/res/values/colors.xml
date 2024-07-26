@@ -2,4 +2,6 @@
 <resources>
     <color name="colorRightEar">#FF0000</color>
     <color name="colorLeftEar">#0000FF</color>
+    <color name="colorAccent">#FF4081</color>
+    <color name="colorPrimary">#3FB55C</color>
 </resources>
