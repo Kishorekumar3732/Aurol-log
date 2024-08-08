@@ -15,7 +15,6 @@ import android.os.Handler
 import android.util.Log
 import android.view.View
 import android.widget.Button
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -47,7 +46,6 @@ class PureToneTestActivity : AppCompatActivity() {
     private lateinit var frequencyTextView: TextView
     private lateinit var dbLevelTextView: TextView
     private lateinit var chart: LineChart
-    private lateinit var scrollView: ScrollView
 
     private var audioTrack: AudioTrack? = null
     private val handler = Handler()
@@ -62,7 +60,7 @@ class PureToneTestActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_pure_tone_test)
 
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
 
         val startTestButton: Button = findViewById(R.id.startTestButton)
         val heardButton: Button = findViewById(R.id.heardButton)
@@ -71,7 +69,6 @@ class PureToneTestActivity : AppCompatActivity() {
         frequencyTextView = findViewById(R.id.frequencyTextView)
         dbLevelTextView = findViewById(R.id.dbLevelTextView)
         chart = findViewById(R.id.chart)
-        scrollView = findViewById(R.id.scrollView)
 
         setupChart()
 
@@ -164,14 +161,14 @@ class PureToneTestActivity : AppCompatActivity() {
         playTone(frequency)
         updateDisplay(frequency, currentDb)
         resultTextView.append("Listening at $frequency Hz and $currentDb dB\n")
+        // Removed auto-switch logic to wait for user input
 
         playToneRunnable = Runnable {
-            if (isPlaying) {
-                handleToneTimeout()
-            }
+            // No timeout; waiting for user interaction
         }
         handler.postDelayed(playToneRunnable!!, 3000)
     }
+
 
     private fun playTone(frequency: Int) {
         stopTone()
@@ -254,8 +251,10 @@ class PureToneTestActivity : AppCompatActivity() {
             currentDb += 5
         }
 
-        playNextTone()
+        playNextTone() // Only proceed to next tone when user clicks heard or not heard
     }
+
+
 
     private fun handleToneTimeout() {
         if (isLeftEarTest) {
@@ -271,12 +270,11 @@ class PureToneTestActivity : AppCompatActivity() {
 
     private fun finishTest() {
         isPlaying = false
+        stopTone()
         resultTextView.append("\nTest Completed.\n")
         resultTextView.append("Left Ear Results:\n${leftEarResults.entries.joinToString { "${it.key}Hz: ${it.value}dB" }}\n")
         resultTextView.append("Right Ear Results:\n${rightEarResults.entries.joinToString { "${it.key}Hz: ${it.value}dB" }}\n")
-
         updateChart() // Update the chart with test results
-        setChartBackgroundColors() // Set background colors
     }
 
     private fun setupChart() {
@@ -332,19 +330,18 @@ class PureToneTestActivity : AppCompatActivity() {
 
         // Create a LineDataSet for the background color bands
         val dataSet = LineDataSet(entries, "Hearing Loss Categories").apply {
+            // No need to set color here as we use transparent lines
             setDrawValues(false)
             setDrawCircles(false)
-            color = Color.TRANSPARENT // Set transparent to hide the line
-            lineWidth = 20f
+            color = Color.TRANSPARENT // This hides the line itself
+            lineWidth = 0f // No line width to avoid drawing lines
+            mode = LineDataSet.Mode.STEPPED // This creates stepped bands instead of continuous lines
         }
 
-        // Update the chart with the background color bands
-        val lineData = chart.data
-        if (lineData == null) {
-            chart.data = LineData(dataSet)
-        } else {
-            lineData.addDataSet(dataSet)
-        }
+        // Add the background color bands as an additional dataset
+        val lineData = chart.data ?: LineData()
+        lineData.addDataSet(dataSet)
+        chart.data = lineData
 
         chart.invalidate() // Refresh the chart
     }
